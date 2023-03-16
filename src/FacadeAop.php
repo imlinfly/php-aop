@@ -15,19 +15,19 @@ namespace LinFly;
  * @package LinFly
  * @mixin AopManager
  * @see AopManager
- * @method static AopManager get(string $class, array $args = [], array $config = []) 获取代理类
- * @method static bool isAspect(string $class, string $method) 是否存在切入点
+ * @method static AopManager get(string $class, array $args = [], array $config = []) Get proxy class
+ * @method static bool isAspect(string $class, string $method) Is there an aspect
  */
 final class FacadeAop
 {
     /**
-     * Container instance.
+     * Aop instance.
      * @var AopManager
      */
     private static AopManager $instance;
 
     /**
-     * Get the container instance.
+     * Get the aop instance.
      * @return AopManager
      */
     public static function getInstance(): AopManager
@@ -39,7 +39,7 @@ final class FacadeAop
     }
 
     /**
-     * Call the container instance method.
+     * Call the aop instance method.
      * @param string $name
      * @param array $arguments
      * @return mixed
