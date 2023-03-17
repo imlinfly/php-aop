@@ -8,8 +8,7 @@
  */
 declare (strict_types=1);
 
-namespace LinFly\Library;
-
+namespace LinFly\Aop\Library;
 
 interface IAspect
 {

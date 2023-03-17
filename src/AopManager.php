@@ -8,14 +8,16 @@
  */
 declare (strict_types=1);
 
-namespace LinFly;
+namespace LinFly\Aop;
 
 use Closure;
-use LinFly\Library\AopChain;
-use LinFly\Library\AopTarget;
-use LinFly\Library\AopUtil;
-use LinFly\Library\IAspect;
+use LinFly\Aop\Library\AopChain;
+use LinFly\Aop\Library\AopTarget;
+use LinFly\Aop\Library\AopUtil;
+use LinFly\Aop\Library\IAspect;
+use LinFly\FacadeContainer;
 use ReflectionClass;
+use function PHPUnit\Framework\isNull;
 
 class AopManager
 {
@@ -71,7 +73,7 @@ class AopManager
                     'allows' => [],
                     // 除了这些方法，其他方法都会切入 (allows 和 ignores 不能同时存在，优先 allows)
                     'ignores' => [
-                        IndexController::class => ['login'],
+                        \app\controller\IndexController::class => ['login'],
                     ],
                     // 切入的类
                     'aspect' => [\app\aop\aspect\IndexAspect::class],
@@ -157,26 +159,15 @@ class AopManager
 
         $aopChain = [];
 
-        // 匹配动态切入点
-        foreach ($this->aspects['matches'] ?? [] as $aspectClass => $aspects) {
-            $class = ltrim($class, '\\');
-            if (preg_match('/^' . $aspectClass . '$/', $class)) {
-                foreach ($aspects as $item) {
-                    if ($this->checkMethodRule($class, $method, $item)) {
-                        array_push($aopChain, ...$item['aspect']);
-                    }
-                }
-            }
-        }
+        $class = ltrim($class, '\\');
 
-        // 获取精准切入点
-        if (isset($this->aspects['static'][$class])) {
-            foreach ($this->aspects['static'][$class] as $item) {
+        $this->findAspects($class, function ($aspect) use ($method, $class, &$aopChain) {
+            foreach ($aspect as $item) {
                 if ($this->checkMethodRule($class, $method, $item)) {
                     array_push($aopChain, ...$item['aspect']);
                 }
             }
-        }
+        });
 
         if (empty($aopChain)) {
             return [];
@@ -194,13 +185,44 @@ class AopManager
     }
 
     /**
+     * 查找切入点
+     * @param string $class
+     * @param Closure $handler
+     * @return void
+     */
+    public function findAspects(string $class, Closure $handler): void
+    {
+        // 匹配动态切入点
+        foreach ($this->aspects['matches'] ?? [] as $aspectClass => $aspects) {
+            if (preg_match('/^' . $aspectClass . '$/', $class)) {
+                if (false === $handler($aspects)) {
+                    return;
+                }
+            }
+        }
+
+        // 获取精准切入点
+        if (isset($this->aspects['static'][$class])) {
+            $handler($this->aspects['static'][$class]);
+        }
+    }
+
+    /**
      * 是否存在切入点
      * @param string $class
-     * @param string $method
+     * @param string|null $method
      * @return bool
      */
-    public function isAspect(string $class, string $method): bool
+    public function isAspect(string $class, string $method = null): bool
     {
+        if (is_null($method)) {
+            $exist = false;
+            $this->findAspects($class, function () use (&$exist) {
+                $exist = true;
+                return false;
+            });
+            return $exist;
+        }
         return !empty($this->getAopChain($class, $method));
     }
 
@@ -246,8 +268,13 @@ class AopManager
      */
     protected function createInstance(ReflectionClass $reflector): object
     {
-        // 忽略切入点接口类
-        if ($reflector->implementsInterface(IAspect::class)) {
+        if (
+            // 忽略切入点接口类
+            $reflector->implementsInterface(IAspect::class) ||
+            // 忽略未设置切入点的类
+            !$this->isAspect($reflector->getName())
+        ) {
+            var_dump('忽略：' . $reflector->getName());
             return $reflector->newInstanceWithoutConstructor();
         }
 

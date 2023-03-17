@@ -8,7 +8,7 @@
  */
 declare (strict_types=1);
 
-namespace LinFly\Library;
+namespace LinFly\Aop\Library;
 
 abstract class AbstractAspect implements IAspect
 {

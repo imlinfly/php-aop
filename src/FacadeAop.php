@@ -8,7 +8,9 @@
  */
 declare (strict_types=1);
 
-namespace LinFly;
+namespace LinFly\Aop;
+
+use LinFly\FacadeContainer;
 
 /**
  * Class FacadeAop

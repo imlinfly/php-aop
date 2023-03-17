@@ -10,8 +10,8 @@ declare (strict_types=1);
 
 namespace example;
 
-use LinFly\Library\AbstractAspect;
-use LinFly\Library\AopTarget;
+use LinFly\Aop\Library\AbstractAspect;
+use LinFly\Aop\Library\AopTarget;
 use support\Log;
 
 class LogAspect extends AbstractAspect

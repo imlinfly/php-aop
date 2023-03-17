@@ -8,10 +8,10 @@
  */
 declare (strict_types=1);
 
-namespace LinFly\Library;
+namespace LinFly\Aop\Library;
 
 use InvalidArgumentException;
-use LinFly\FacadeAop;
+use LinFly\Aop\FacadeAop;
 use ReflectionIntersectionType;
 use ReflectionNamedType;
 use ReflectionType;
@@ -163,7 +163,7 @@ class AopUtil
                      {
                         \$__args__ = \\func_get_args();
                         {$params['set_args']}
-                        \$__result__ = \LinFly\FacadeAop::call(\$this, parent::class, '__construct', \$__args__, function({$params['define']}) {
+                        \$__result__ = \LinFly\Aop\FacadeAop::call(\$this, parent::class, '__construct', \$__args__, function({$params['define']}) {
                             \$__args__ = \\func_get_args();
                             {$params['set_args']}
                             return parent::__construct(...\$__args__);
@@ -218,7 +218,7 @@ class AopUtil
                 {
                     \$__args__ = \\func_get_args();
                     {$params['set_args']}
-                    \$__result__ = \LinFly\FacadeAop::call(\$this, parent::class, '{$methodName}', \$__args__, function({$params['define']}) {
+                    \$__result__ = \LinFly\Aop\FacadeAop::call(\$this, parent::class, '{$methodName}', \$__args__, function({$params['define']}) {
                         \$__args__ = \\func_get_args();
                         {$params['set_args']}
                         return parent::{$methodName}(...\$__args__);
