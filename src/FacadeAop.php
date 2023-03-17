@@ -30,12 +30,13 @@ final class FacadeAop
 
     /**
      * Get the aop instance.
+     * @param array $config
      * @return AopManager
      */
-    public static function getInstance(): AopManager
+    public static function getInstance(array $config = []): AopManager
     {
         if (!isset(self::$instance)) {
-            self::$instance = FacadeContainer::make(AopManager::class, [[]]);
+            self::$instance = FacadeContainer::make(AopManager::class, [$config]);
         }
         return self::$instance;
     }

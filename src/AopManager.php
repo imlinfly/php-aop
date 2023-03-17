@@ -17,7 +17,6 @@ use LinFly\Aop\Library\AopUtil;
 use LinFly\Aop\Library\IAspect;
 use LinFly\FacadeContainer;
 use ReflectionClass;
-use function PHPUnit\Framework\isNull;
 
 class AopManager
 {
@@ -274,7 +273,6 @@ class AopManager
             // 忽略未设置切入点的类
             !$this->isAspect($reflector->getName())
         ) {
-            var_dump('忽略：' . $reflector->getName());
             return $reflector->newInstanceWithoutConstructor();
         }
 
