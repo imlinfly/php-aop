@@ -17,6 +17,8 @@ use LinFly\Aop\Library\AopUtil;
 use LinFly\Aop\Library\IAspect;
 use LinFly\FacadeContainer;
 use ReflectionClass;
+use SplDoublyLinkedList;
+use Workerman\Timer;
 
 class AopManager
 {
@@ -33,22 +35,22 @@ class AopManager
     protected int $nameIndex = 0;
 
     /**
-     * 切入点索引
+     * 切入点列表
      * @var array
      */
     protected array $aspects = [];
 
     /**
      * 切入点缓存
-     * @var array
+     * @var AopCache
      */
-    protected array $aspectCaches = [];
+    protected AopCache $aspectCache;
 
     /**
      * 代理类内容缓存
-     * @var array
+     * @var AopCache
      */
-    protected array $proxyCaches = [];
+    protected AopCache $proxyCaches;
 
     public function __construct(array $config)
     {
@@ -57,7 +59,7 @@ class AopManager
             'cache' => false,
             // 最大缓存数量
             'max_cache_number' => 100,
-            // 切入点列表
+            // 切入点类列表
             'aspects' => [
                 /*[
                     // 需要切入的类
@@ -69,9 +71,9 @@ class AopManager
                     // 需要切入的类
                     'classes' => ['app\controller\*'],
                     // 只有在这些方法中才会切入
-                    'allows' => [],
-                    // 除了这些方法，其他方法都会切入 (allows 和 ignores 不能同时存在，优先 allows)
-                    'ignores' => [
+                    'only' => [],
+                    // 除了这些方法，其他方法都会切入 (only 和 except 不能同时存在，优先 only)
+                    'except' => [
                         \app\controller\IndexController::class => ['login'],
                     ],
                     // 切入的类
@@ -80,44 +82,43 @@ class AopManager
             ],
         ];
         $this->config = array_merge($defaultConfig, $config);
+        $this->config['aspects'] = (array)$this->config['aspects'];
+        $this->aspects = &$this->config['aspects'];
+
+        $this->aspectCache = new AopCache(10000);
+        $this->proxyCaches = new AopCache($this->config['max_cache_number']);
 
         // 绑定容器实例化回调
         $this->bindContainerHandler();
-        // 生成切入点索引
-        $this->generateAspectsIndex();
+        // 排序
+        $this->sort();
     }
 
     /**
-     * 生成aspects索引
+     * 对切入点列表排序
      * @return void
      */
-    public function generateAspectsIndex()
+    public function sort()
     {
-        $aspects = $this->config['aspects'];
-        foreach ($aspects as $aspect) {
-            $classes = $aspect['classes'];
-            $allows = $aspect['allows'] ?? [];
-            $ignores = $aspect['ignores'] ?? [];
-            $aspect = $aspect['aspect'];
-            foreach ($classes as $class) {
-                $class = ltrim($class, '\\');
-                // 通配符切入点
+        $aspects = &$this->aspects;
+        // 对 $aspects 进行降序排序
+        usort($aspects, function ($a, $b) {
+            return ($a['sort'] ?? 0) < ($b['sort'] ?? 0) ? 1 : -1;
+        });
+
+        foreach ($aspects as &$aspect) {
+            if (isset($aspect['__format'])) {
+                continue;
+            }
+
+            $aspect['classes'] = array_map(function ($class) {
                 if (str_contains($class, '*')) {
                     $class = str_replace(['*', '\\'], ['.*', '\\\\'], $class);
-                    $this->aspects['matches'][$class][] = [
-                        'allows' => $allows,
-                        'ignores' => $ignores,
-                        'aspect' => $aspect,
-                    ];
-                } else // 精准切入点
-                {
-                    $this->aspects['static'][$class][] = [
-                        'allows' => $allows,
-                        'ignores' => $ignores,
-                        'aspect' => $aspect,
-                    ];
                 }
-            }
+                return $class;
+            }, $aspect['classes']);
+
+            $aspect['__format'] = true;
         }
     }
 
@@ -152,8 +153,8 @@ class AopManager
     {
         $cacheKey = $class . '.' . $method;
 
-        if (isset($this->aspectCaches[$cacheKey])) {
-            return $this->aspectCaches[$cacheKey];
+        if ($cache = $this->aspectCache->get($cacheKey)) {
+            return $cache;
         }
 
         $aopChain = [];
@@ -161,10 +162,8 @@ class AopManager
         $class = ltrim($class, '\\');
 
         $this->findAspects($class, function ($aspect) use ($method, $class, &$aopChain) {
-            foreach ($aspect as $item) {
-                if ($this->checkMethodRule($class, $method, $item)) {
-                    array_push($aopChain, ...$item['aspect']);
-                }
+            if ($this->checkMethodRule($class, $method, $aspect)) {
+                array_push($aopChain, ...$aspect['aspect']);
             }
         });
 
@@ -174,35 +173,37 @@ class AopManager
 
         // 切入点去重
         $aopChain = array_unique($aopChain);
+        // 缓存切入点
+        $this->aspectCache->set($cacheKey, $aopChain);
 
-        // 回收缓存
-        if (count($this->aspectCaches) > 10000) {
-            unset($this->aspectCaches[key($this->aspectCaches)]);
-        }
-
-        return $this->aspectCaches[$cacheKey] = $aopChain;
+        return $aopChain;
     }
 
     /**
      * 查找切入点
-     * @param string $class
+     * @param string $className
      * @param Closure $handler
      * @return void
      */
-    public function findAspects(string $class, Closure $handler): void
+    public function findAspects(string $className, Closure $handler): void
     {
-        // 匹配动态切入点
-        foreach ($this->aspects['matches'] ?? [] as $aspectClass => $aspects) {
-            if (preg_match('/^' . $aspectClass . '$/', $class)) {
-                if (false === $handler($aspects)) {
+        $className = ltrim($className, '\\');
+        foreach ($this->aspects as $aspect) {
+            foreach ($aspect['classes'] as $class) {
+                $result = null;
+                if (str_contains($class, '*')) {
+                    if (preg_match('/^' . $class . '$/', $className)) {
+                        $result = $handler($aspect);
+                    }
+                } else {
+                    if ($class === $className) {
+                        $result = $handler($aspect);
+                    }
+                }
+                if (false === $result) {
                     return;
                 }
             }
-        }
-
-        // 获取精准切入点
-        if (isset($this->aspects['static'][$class])) {
-            $handler($this->aspects['static'][$class]);
         }
     }
 
@@ -215,11 +216,15 @@ class AopManager
     public function isAspect(string $class, string $method = null): bool
     {
         if (is_null($method)) {
+            if (null !== $this->aspectCache->get($class)) {
+                return true;
+            }
             $exist = false;
             $this->findAspects($class, function () use (&$exist) {
                 $exist = true;
                 return false;
             });
+            $this->aspectCache->set($class, $exist);
             return $exist;
         }
         return !empty($this->getAopChain($class, $method));
@@ -234,10 +239,10 @@ class AopManager
      */
     protected function checkMethodRule(string $class, string $method, array $rule)
     {
-        // 允许的方法，优先高于忽略的方法
-        if (!empty($rule['allows'] ?? [])) {
-            if (isset($rule['allows'][$class])) {
-                $methods = (array)($rule['allows'][$class] ?? []);
+        // 允许的方法，优先高于排除的方法
+        if (!empty($rule['only'] ?? [])) {
+            if (isset($rule['only'][$class])) {
+                $methods = (array)($rule['only'][$class] ?? []);
                 if ($methods === ['*'] || in_array($method, $methods)) {
                     return true;
                 }
@@ -245,10 +250,10 @@ class AopManager
             return false;
         }
 
-        // 忽略的方法 (allows 和 ignores 不能同时存在，优先 allows)
-        if (!empty($rule['ignores'] ?? [])) {
-            if (isset($rule['ignores'][$class])) {
-                $methods = (array)($rule['ignores'][$class] ?? []);
+        // 忽略的方法 (only 和 except 不能同时存在，优先 only)
+        if (!empty($rule['except'] ?? [])) {
+            if (isset($rule['except'][$class])) {
+                $methods = (array)($rule['except'][$class] ?? []);
                 if ($methods === ['*'] || in_array($method, $methods)) {
                     return false;
                 }
@@ -279,20 +284,15 @@ class AopManager
         $isCache = $this->config['cache'] ?? false;
         $className = $reflector->getName();
 
-        if ($isCache && isset($this->proxyCaches[$className])) {
-            [$newClassName, $code] = $this->proxyCaches[$className];
+        if ($isCache && $this->proxyCaches->has($className)) {
+            [$newClassName, $code] = $this->proxyCaches->get($className);
         } else {
             $newClassName = $reflector->getShortName() . 'AopProxy_' . $this->nameIndex++;
             // 生成代理类代码
             $code = AopUtil::getTpl($reflector, $newClassName);
             // 缓存代理类代码
             if ($isCache) {
-                $this->proxyCaches[$className] = [$newClassName, $code];
-                // 回收缓存
-                $maxCache = intval($this->config['max_cache_number'] ?? 100);
-                if (count($this->proxyCaches) > $maxCache) {
-                    unset($this->proxyCaches[key($this->proxyCaches)]);
-                }
+                $this->proxyCaches->set($className, [$newClassName, $code]);
             }
         }
 
@@ -309,5 +309,22 @@ class AopManager
     protected function bindContainerHandler(): void
     {
         FacadeContainer::setNewClassInstanceHandler(fn($reflector) => $this->createInstance($reflector));
+    }
+
+    /**
+     * 设置切入点
+     * @param array $aspects
+     * @param bool $isEmpty 是否清空原有切入点
+     * @return static
+     */
+    public function setAspects(array $aspects, bool $isEmpty = false): static
+    {
+        if ($isEmpty) {
+            $this->aspects = [];
+        }
+
+        array_push($this->aspects, ...$aspects);
+
+        return $this;
     }
 }

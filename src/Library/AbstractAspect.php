@@ -12,8 +12,7 @@ namespace LinFly\Aop\Library;
 
 abstract class AbstractAspect implements IAspect
 {
-
-    public function before(AopTarget $aopTarget)
+    public function before(AopTarget $aopTarget): void
     {
     }
 
@@ -22,7 +21,7 @@ abstract class AbstractAspect implements IAspect
         return $aopChain->invoke();
     }
 
-    public function after(AopTarget $aopTarget, mixed $result)
+    public function after(AopTarget $aopTarget, mixed $result): void
     {
     }
 }

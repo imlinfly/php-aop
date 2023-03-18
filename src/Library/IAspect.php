@@ -15,9 +15,9 @@ interface IAspect
     /**
      * 执行前置
      * @param AopTarget $aopTarget
-     * @return mixed
+     * @return void
      */
-    public function before(AopTarget $aopTarget);
+    public function before(AopTarget $aopTarget): void;
 
     /**
      * 执行环绕
@@ -30,7 +30,7 @@ interface IAspect
      * 执行后置
      * @param AopTarget $aopTarget
      * @param mixed $result
-     * @return mixed
+     * @return void
      */
-    public function after(AopTarget $aopTarget, mixed $result);
+    public function after(AopTarget $aopTarget, mixed $result): void;
 }

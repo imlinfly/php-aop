@@ -157,7 +157,7 @@ class AopUtil
         $constructMethod = $reflector->getConstructor();
         if (null !== $constructMethod) {
             $params = static::getMethodParamTpls($constructMethod);
-            if (FacadeAop::isAspect($reflector->getName(), '__construct')) {
+            if (!$constructMethod->isFinal() && FacadeAop::isAspect($class, '__construct')) {
                 $constructMethod = <<<TPL
                      public function __construct({$params['define']})
                      {
@@ -170,14 +170,6 @@ class AopUtil
                         });
                      }
                      
-                TPL;
-            } else if ($constructMethod->isProtected()) {
-                $constructMethod = <<<TPL
-                public function __construct({$params['define']})
-                {
-                    parent::__construct({$params['call']});
-                }
-                
                 TPL;
             } else {
                 $constructMethod = '';
