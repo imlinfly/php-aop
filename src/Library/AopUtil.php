@@ -78,7 +78,7 @@ class AopUtil
                     $typeStr = '\\' . $typeStr;
                 }
             }
-            if ($type->allowsNull() && 'mixed' !== $typeStr) {
+            if ($type->allowsNull() && 'mixed' !== $typeStr && 'null' !== $typeStr) {
                 return '?' . $typeStr;
             } else {
                 return $typeStr;
@@ -88,7 +88,7 @@ class AopUtil
             foreach ($type->getTypes() as $subType) {
                 $result[] = self::getTypeCode($subType, $className);
             }
-            if ($type->allowsNull() && !\in_array('mixed', $result)) {
+            if ($type->allowsNull() && !\in_array('mixed', $result) && !\in_array('null', $result)) {
                 $result[] = 'null';
             }
 
