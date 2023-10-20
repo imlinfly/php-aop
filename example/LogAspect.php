@@ -19,12 +19,12 @@ class LogAspect extends AbstractAspect
     private float $time;
 
     // 记录方法执行时间
-    public function before(AopTarget $aopTarget)
+    public function before(AopTarget $aopTarget): void
     {
         $this->time = microtime(true);
     }
 
-    public function after(AopTarget $aopTarget, mixed $result)
+    public function after(AopTarget $aopTarget, mixed $result): void
     {
         $time = microtime(true) - $this->time;
         var_dump('after: ' . $aopTarget->getTargetClass() . '::' . $aopTarget->getMethod() . " -> return type:" . gettype($result) . " time: " . $time);

@@ -17,8 +17,6 @@ use LinFly\Aop\Library\AopUtil;
 use LinFly\Aop\Library\IAspect;
 use LinFly\FacadeContainer;
 use ReflectionClass;
-use SplDoublyLinkedList;
-use Workerman\Timer;
 
 class AopManager
 {
@@ -41,22 +39,20 @@ class AopManager
     protected array $aspects = [];
 
     /**
+     * 代理类名称映射
+     * @var array
+     */
+    protected array $proxyMappings = [];
+
+    /**
      * 切入点缓存
      * @var AopCache
      */
     protected AopCache $aspectCache;
 
-    /**
-     * 代理类内容缓存
-     * @var AopCache
-     */
-    protected AopCache $proxyCaches;
-
     public function __construct(array $config)
     {
         $defaultConfig = [
-            // 是否开启内存缓存
-            'cache' => false,
             // 最大缓存数量
             'max_cache_number' => 100,
             // 切入点类列表
@@ -85,8 +81,7 @@ class AopManager
         $this->config['aspects'] = (array)$this->config['aspects'];
         $this->aspects = &$this->config['aspects'];
 
-        $this->aspectCache = new AopCache(10000);
-        $this->proxyCaches = new AopCache($this->config['max_cache_number']);
+        $this->aspectCache = new AopCache($this->config['max_cache_number'] ?? 10000);
 
         // 绑定容器实例化回调
         $this->bindContainerHandler();
@@ -281,26 +276,37 @@ class AopManager
             return $reflector->newInstanceWithoutConstructor();
         }
 
-        $isCache = $this->config['cache'] ?? false;
+        // 生成代理类
+        $proxyClassName = $this->getProxyClassName($reflector);
+
+        $newReflector = new ReflectionClass($proxyClassName);
+        return $newReflector->newInstanceWithoutConstructor();
+    }
+
+    /**
+     * 获取代理后的类名
+     * @param ReflectionClass $reflector
+     * @return string
+     */
+    public function getProxyClassName(ReflectionClass $reflector): string
+    {
         $className = $reflector->getName();
 
-        if ($isCache && $this->proxyCaches->has($className)) {
-            [$newClassName, $code] = $this->proxyCaches->get($className);
-        } else {
-            $newClassName = $reflector->getShortName() . 'AopProxy_' . $this->nameIndex++;
-            // 生成代理类代码
-            $code = AopUtil::getTpl($reflector, $newClassName);
-            // 缓存代理类代码
-            if ($isCache) {
-                $this->proxyCaches->set($className, [$newClassName, $code]);
-            }
+        if (isset($this->proxyMappings[$className])) {
+            return $this->proxyMappings[$className];
         }
+
+        $newClassName = $reflector->getShortName() . 'AopProxy_' . $this->nameIndex++;
+        $this->proxyMappings[$className] = $newClassName;
+
+        // 生成代理类代码
+        $code = AopUtil::getTpl($reflector, $newClassName);
 
         eval($code);
 
-        $newReflector = new ReflectionClass($newClassName);
-        return $newReflector->newInstanceWithoutConstructor();
+        return $newClassName;
     }
+
 
     /**
      * 绑定容器实例化回调

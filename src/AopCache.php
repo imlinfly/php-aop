@@ -10,59 +10,79 @@ declare (strict_types=1);
 
 namespace LinFly\Aop;
 
+use InvalidArgumentException;
+
 /**
  * LRU算法缓存
  */
 class AopCache
 {
     /**
-     * 双向链表MAP
-     * @var array
-     */
-    protected array $map = [];
-
-    /**
-     * 缓存数据
+     * The front of the array contains the LRU element
+     *
      * @var array
      */
     protected array $data = [];
 
     /**
-     * @param int $capacity 缓存容量
+     * Create a LRU Cache
+     *
+     * @throws InvalidArgumentException
      */
-    public function __construct(protected int $capacity)
+    public function __construct(
+        /**
+         * Cache capacity
+         * @var int $capacity
+         */
+        protected int $capacity
+    )
     {
+        if ($capacity <= 0) {
+            throw new InvalidArgumentException();
+        }
     }
 
     /**
-     * 获取缓存
-     * @param string $key
-     * @param mixed|null $default
+     * Get the value cached with this key
+     *
+     * @param int|string $key Cache key
+     * @param mixed|null $default The value to be returned if key not found. (Optional)
      * @return mixed
      */
-    public function get(string $key, mixed $default = null): mixed
+    public function get(int|string $key, mixed $default = null): mixed
     {
         if (isset($this->data[$key])) {
-            $this->deleteKey($key);
-            $this->createKey($key);
-            return $this->data[$key] ?? $default;
+            $this->recordAccess($key);
+            return $this->data[$key];
+        } else {
+            return $default;
         }
-
-        return $default;
     }
 
     /**
-     * 校验缓存是否存在
-     * @param string $key
-     * @return bool
+     * Put something in the cache
+     *
+     * @param int|string $key Cache key
+     * @param mixed $value The value to cache
      */
-    public function has(string $key): bool
+    public function set(int|string $key, mixed $value): void
     {
-        return isset($this->map[$key]);
+        if (isset($this->data[$key])) {
+            $this->data[$key] = $value;
+            $this->recordAccess($key);
+        } else {
+            $this->data[$key] = $value;
+            if ($this->count() > $this->capacity) {
+                // remove least recently used element (front of array)
+                reset($this->data);
+                unset($this->data[key($this->data)]);
+            }
+        }
     }
 
     /**
-     * 获取缓存数量
+     * Get the number of elements in the cache
+     *
      * @return int
      */
     public function count(): int
@@ -71,79 +91,55 @@ class AopCache
     }
 
     /**
-     * 设置缓存
-     * @param string $key
-     * @param mixed $value
+     * Does the cache contain an element with this key
+     *
+     * @param int|string $key The key
      * @return bool
      */
-    public function set(string $key, mixed $value): bool
+    public function has(int|string $key): bool
     {
-        if (isset($this->data[$key])) {
-            // 删除key
-            $this->deleteKey($key);
-        } else {
-            if (count($this->data) >= $this->capacity) {
-                $deleteKey = array_shift($this->map['keys']);
-                $this->deleteKey($deleteKey);
-                unset($this->data[$deleteKey]);
-            }
-        }
-        $this->data[$key] = $value;
-        $this->createKey($key);
-
-        return $this->has($key);
+        return isset($this->data[$key]);
     }
 
     /**
-     * 删除缓存
-     * @param string $key
-     * @return bool
+     * Remove the element with this key.
+     *
+     * @param int|string $key The key
+     * @return mixed Value or null if not set
      */
-    public function delete(string $key): bool
+    public function delete(int|string $key): mixed
     {
         if (isset($this->data[$key])) {
-            $this->deleteKey($key);
+            $value = $this->data[$key];
             unset($this->data[$key]);
-            return true;
+            return $value;
+        } else {
+            return null;
         }
-        return false;
     }
 
     /**
-     * 清空缓存
-     * @return void
+     * Clear the cache
      */
     public function empty(): void
     {
-        $this->map = [];
         $this->data = [];
     }
 
     /**
-     * 删除Key记录
-     * @param string $key
-     * @return void
+     * Moves the element from current position to end of array
+     *
+     * @param int|string $key The key
      */
-    protected function deleteKey(string $key): void
+    protected function recordAccess(int|string $key)
     {
-        if (isset($this->map['index'][$key])) {
-            $index = $this->map['index'][$key];
-            unset($this->map['index'][$key], $this->map['keys'][$index]);
-        }
+        $value = $this->data[$key];
+        unset($this->data[$key]);
+        $this->data[$key] = $value;
     }
 
     /**
-     * 创建key记录
-     * @param string $key
-     * @return void
-     */
-    protected function createKey(string $key): void
-    {
-        $this->map['keys'] ??= [];
-        $this->map['index'][$key] = array_push($this->map['keys'], $key) - 1;
-    }
-
-    /**
+     * Get the cache data
      * @return array
      */
     public function getData(): array
